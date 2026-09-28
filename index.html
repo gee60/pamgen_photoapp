@@ -170,7 +170,7 @@
                 </button>
             </div>
             <p class="text-xs text-stone-500 leading-relaxed">
-                Your Public R2 Bucket URL is pre-configured. If you have deployed a Cloudflare Worker API endpoint to handle server-side uploads and live bucket listing, enter it below.
+                Your Public R2 Bucket URL is pre-configured. You can update your Cloudflare Worker backend API endpoint below if needed.
             </p>
             <div class="space-y-4">
                 <div>
@@ -179,8 +179,7 @@
                 </div>
                 <div>
                     <label class="block text-xs font-semibold text-stone-700 uppercase tracking-wider mb-1.5">Worker / Backend API Endpoint</label>
-                    <input type="text" id="r2-upload-api-input" placeholder="https://your-worker.workers.dev" class="w-full px-3 py-2 rounded-lg border border-stone-300 text-sm focus:outline-none focus:border-burgundy">
-                    <p class="text-[11px] text-stone-400 mt-1">Leave blank to use direct browser storage syncing.</p>
+                    <input type="text" id="r2-upload-api-input" placeholder="https://media-vault-api.your-username.workers.dev" class="w-full px-3 py-2 rounded-lg border border-stone-300 text-sm focus:outline-none focus:border-burgundy">
                 </div>
             </div>
             <div class="flex justify-end space-x-2 pt-2">
@@ -192,10 +191,10 @@
 
     <!-- JavaScript Logic -->
     <script>
-        // Pre-configured R2 Public URL
+        // Pre-configured R2 Public URL and Worker Endpoint
         let r2Config = {
             publicUrl: 'https://pub-bea8c4084925441c9b1f3b934025ec8b.r2.dev',
-            uploadApi: localStorage.getItem('r2_upload_api') || ''
+            uploadApi: localStorage.getItem('r2_upload_api') || 'https://media-vault-api.your-username.workers.dev'
         };
 
         let allMediaItems = [];
@@ -204,9 +203,7 @@
 
         window.addEventListener('DOMContentLoaded', () => {
             document.getElementById('r2-endpoint-input').value = r2Config.publicUrl;
-            if (r2Config.uploadApi) {
-                document.getElementById('r2-upload-api-input').value = r2Config.uploadApi;
-            }
+            document.getElementById('r2-upload-api-input').value = r2Config.uploadApi;
             loadGalleryFromR2();
         });
 
@@ -272,6 +269,8 @@
             const statusText = itemElement.querySelector('.file-status');
 
             try {
+                let fileUrl = `${r2Config.publicUrl}/${encodeURIComponent(file.name)}`;
+
                 if (r2Config.uploadApi) {
                     const formData = new FormData();
                     formData.append('file', file);
@@ -283,15 +282,12 @@
 
                     if (!response.ok) throw new Error('Upload failed');
                     const resData = await response.json();
-                    
-                    var fileUrl = resData.url || `${r2Config.publicUrl}/${file.name}`;
+                    fileUrl = resData.url || fileUrl;
                 } else {
-                    // Direct simulated progress & shared sync record
                     await new Promise(resolve => setTimeout(resolve, 1200));
-                    var fileUrl = `${r2Config.publicUrl}/${encodeURIComponent(file.name)}`;
                 }
 
-                // Register file in shared catalog so all visitors see it instantly
+                // Register file in local shared sync for fallback or immediate view
                 saveItemToSharedCatalog({
                     name: file.name,
                     url: fileUrl,
@@ -319,7 +315,6 @@
             }
         }
 
-        // Shared catalog synchronization (using localStorage across sessions/visitors demo or fetch worker list)
         function getSharedCatalogItems() {
             const saved = localStorage.getItem('r2_shared_media_vault');
             return saved ? JSON.parse(saved) : [];

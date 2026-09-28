@@ -135,12 +135,7 @@
             </div>
             <div class="p-4 bg-white border-t border-stone-200 flex items-center justify-between">
                 <span id="modal-meta" class="text-xs text-stone-500">Cloudflare R2 Object Storage</span>
-                <div>
-                    <button id="modal-copy-btn" onclick="copyFileUrl()" class="px-4 py-2 rounded-lg bg-stone-100 hover:bg-stone-200 text-stone-700 text-sm font-medium transition flex items-center space-x-2">
-                        <i class="fa-solid fa-link"></i>
-                        <span>Copy Public URL</span>
-                    </button>
-                </div>
+                <span class="text-xs text-stone-400 italic">Viewing mode only</span>
             </div>
         </div>
     </div>
@@ -155,7 +150,6 @@
 
         let allMediaItems = [];
         let currentFilter = 'all';
-        let currentPreviewUrl = '';
 
         window.addEventListener('DOMContentLoaded', () => {
             loadGalleryFromR2();
@@ -367,7 +361,6 @@
 
         // Preview Modal Controls
         function openPreview(url, name, type) {
-            currentPreviewUrl = url;
             const modal = document.getElementById('preview-modal');
             const modalBody = document.getElementById('modal-body');
             const modalTitle = document.getElementById('modal-title');
@@ -393,16 +386,6 @@
             const modal = document.getElementById('preview-modal');
             modal.classList.add('hidden');
             document.getElementById('modal-body').innerHTML = '';
-        }
-
-        function copyFileUrl() {
-            navigator.clipboard.writeText(currentPreviewUrl).then(() => {
-                const btn = document.getElementById('modal-copy-btn');
-                btn.innerHTML = `<i class="fa-solid fa-check text-emerald-600"></i><span>Copied!</span>`;
-                setTimeout(() => {
-                    btn.innerHTML = `<i class="fa-solid fa-link"></i><span>Copy Public URL</span>`;
-                }, 2000);
-            });
         }
     </script>
 </body>

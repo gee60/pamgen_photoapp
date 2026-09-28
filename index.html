@@ -1,0 +1,621 @@
+<!DOCTYPE html>
+<html lang="en" class="h-full">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Cloudflare R2 Media Vault</title>
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- FontAwesome for Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- Google Fonts: Inter -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    colors: {
+                        burgundy: {
+                            DEFAULT: '#581845',
+                            dark: '#3d1030',
+                            light: '#7d2b63'
+                        },
+                        sage: {
+                            DEFAULT: '#8A9A86',
+                            light: '#b2c2af',
+                            dark: '#637360'
+                        },
+                        cream: {
+                            DEFAULT: '#F9F8F6',
+                            card: '#FFFFFF',
+                            dark: '#EFECE6'
+                        },
+                        roseaccent: {
+                            DEFAULT: '#D4A373',
+                            light: '#FAEDCD'
+                        }
+                    },
+                    fontFamily: {
+                        sans: ['Inter', 'sans-serif']
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+        }
+        /* Custom scrollbar for clean look */
+        ::-webkit-scrollbar {
+            width: 8px;
+            height: 8px;
+        }
+        ::-webkit-scrollbar-track {
+            background: #F9F8F6;
+        }
+        ::-webkit-scrollbar-thumb {
+            background: #8A9A86;
+            border-radius: 4px;
+        }
+        ::-webkit-scrollbar-thumb:hover {
+            background: #637360;
+        }
+    </style>
+</head>
+<body class="bg-cream text-neutral-800 h-full flex flex-col antialiased selection:bg-roseaccent selection:text-white">
+
+    <!-- Header -->
+    <header class="bg-white border-b border-neutral-200 sticky top-0 z-40 shadow-sm">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
+            <div class="flex items-center space-x-3">
+                <div class="w-10 h-10 rounded-xl bg-burgundy flex items-center justify-center text-white shadow-md">
+                    <i class="fa-solid fa-cloud-arrow-up text-lg"></i>
+                </div>
+                <div>
+                    <h1 class="font-bold text-lg text-neutral-900 tracking-tight">R2 Media Vault</h1>
+                    <p class="text-xs text-neutral-500">Powered by Cloudflare R2 Storage (Read-Only UI)</p>
+                </div>
+            </div>
+            <div class="flex items-center space-x-3">
+                <div class="hidden sm:flex items-center space-x-2 bg-sage/10 px-3 py-1.5 rounded-full text-xs font-medium text-sage-dark border border-sage/20">
+                    <span class="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
+                    <span>Bucket: media-assets-production</span>
+                </div>
+                <button onclick="openConfigModal()" class="p-2 text-neutral-600 hover:text-burgundy transition rounded-lg hover:bg-neutral-100" title="Storage Configuration">
+                    <i class="fa-solid fa-gear text-lg"></i>
+                </button>
+            </div>
+        </div>
+    </header>
+
+    <!-- Main App Container -->
+    <main class="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-8 flex flex-col gap-8 overflow-y-auto">
+        
+        <!-- Notification Toast Banner -->
+        <div id="toast" class="hidden fixed bottom-6 right-6 z-50 bg-neutral-900 text-white px-5 py-3 rounded-xl shadow-xl flex items-center space-x-3 transition-all duration-300 transform translate-y-10 opacity-0">
+            <i id="toast-icon" class="fa-solid fa-circle-check text-emerald-400"></i>
+            <span id="toast-message" class="text-sm font-medium">Action completed successfully.</span>
+        </div>
+
+        <!-- Upload & Drop Zone Section -->
+        <section class="bg-white rounded-2xl p-6 sm:p-8 shadow-sm border border-neutral-200/80 transition-all hover:shadow-md">
+            <div class="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-6">
+                <div>
+                    <h2 class="text-xl font-bold text-neutral-900">Upload Media Assets</h2>
+                    <p class="text-sm text-neutral-500 mt-0.5">Drag and drop high-resolution photos or videos directly to your Cloudflare R2 bucket.</p>
+                </div>
+                <div class="flex items-center gap-3">
+                    <label for="file-input" class="cursor-pointer bg-burgundy hover:bg-burgundy-light text-white font-medium px-5 py-2.5 rounded-xl text-sm shadow-sm transition flex items-center justify-center space-x-2">
+                        <i class="fa-solid fa-folder-open"></i>
+                        <span>Browse Files</span>
+                    </label>
+                    <input type="file" id="file-input" class="hidden" multiple accept="image/*,video/*">
+                </div>
+            </div>
+
+            <!-- Drag and Drop Dropzone -->
+            <div id="drop-zone" class="border-2 border-dashed border-neutral-300 hover:border-burgundy rounded-xl p-8 text-center bg-neutral-50 hover:bg-burgundy/5 transition-all cursor-pointer flex flex-col items-center justify-center group">
+                <div class="w-16 h-16 rounded-full bg-burgundy/10 text-burgundy flex items-center justify-center text-2xl mb-4 group-hover:scale-110 transition-transform">
+                    <i class="fa-solid fa-cloud-arrow-up"></i>
+                </div>
+                <h3 class="text-base font-semibold text-neutral-800 mb-1">Drag and drop your photos and videos here</h3>
+                <p class="text-xs text-neutral-500 max-w-sm mb-4">Supports PNG, JPG, GIF, WebP, MP4, MOV up to 500MB per file with instant direct R2 multipart upload simulation.</p>
+                <div class="flex flex-wrap justify-center gap-2 text-xs text-neutral-400">
+                    <span class="bg-white px-2.5 py-1 rounded-md border border-neutral-200">📷 Photos</span>
+                    <span class="bg-white px-2.5 py-1 rounded-md border border-neutral-200">🎥 Videos</span>
+                    <span class="bg-white px-2.5 py-1 rounded-md border border-neutral-200">⚡ Fast Edge Upload</span>
+                </div>
+            </div>
+
+            <!-- Upload Progress Queue Container -->
+            <div id="upload-queue" class="hidden mt-6 space-y-3">
+                <div class="flex items-center justify-between text-xs font-semibold text-neutral-700 uppercase tracking-wider mb-2">
+                    <span>Active Uploads</span>
+                    <span id="queue-count">0 items</span>
+                </div>
+                <div id="queue-list" class="space-y-3 max-h-60 overflow-y-auto pr-1">
+                    <!-- Dynamic queue items populated via JS -->
+                </div>
+            </div>
+        </section>
+
+        <!-- Media Gallery Section -->
+        <section class="flex flex-col gap-4">
+            <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                <div>
+                    <h2 class="text-xl font-bold text-neutral-900">R2 Storage Vault</h2>
+                    <p class="text-sm text-neutral-500">Browse, preview, and stream media files from Cloudflare R2. File deletions are managed via the Cloudflare console.</p>
+                </div>
+                <div class="flex items-center gap-3">
+                    <!-- Search input -->
+                    <div class="relative">
+                        <span class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-neutral-400">
+                            <i class="fa-solid fa-search text-sm"></i>
+                        </span>
+                        <input type="text" id="search-input" oninput="filterMedia()" placeholder="Search media..." class="pl-9 pr-4 py-2 bg-white border border-neutral-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-burgundy/50 w-48 sm:w-64">
+                    </div>
+                    <!-- Filter pills -->
+                    <div class="flex bg-white border border-neutral-200 rounded-xl p-1 text-xs font-medium">
+                        <button onclick="setFilter('all')" id="filter-all" class="px-3 py-1.5 rounded-lg bg-burgundy text-white transition">All</button>
+                        <button onclick="setFilter('image')" id="filter-image" class="px-3 py-1.5 rounded-lg text-neutral-600 hover:text-neutral-900 transition">Photos</button>
+                        <button onclick="setFilter('video')" id="filter-video" class="px-3 py-1.5 rounded-lg text-neutral-600 hover:text-neutral-900 transition">Videos</button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Media Grid -->
+            <div id="media-grid" class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6">
+                <!-- Dynamically populated media items -->
+            </div>
+
+            <!-- Empty State -->
+            <div id="empty-state" class="hidden flex-col items-center justify-center p-12 bg-white rounded-2xl border border-neutral-200 text-center">
+                <div class="w-16 h-16 rounded-full bg-neutral-100 text-neutral-400 flex items-center justify-center text-2xl mb-4">
+                    <i class="fa-solid fa-photo-film"></i>
+                </div>
+                <h3 class="text-base font-semibold text-neutral-800 mb-1">No media found in bucket</h3>
+                <p class="text-xs text-neutral-500 max-w-xs mb-4">Upload some photos or videos above to populate your Cloudflare R2 storage bucket.</p>
+            </div>
+        </section>
+
+    </main>
+
+    <!-- Media Preview Modal -->
+    <div id="preview-modal" class="fixed inset-0 z-50 hidden bg-neutral-950/80 backdrop-blur-sm flex items-center justify-center p-4">
+        <div class="bg-white rounded-2xl max-w-4xl w-full overflow-hidden shadow-2xl flex flex-col max-h-[90vh] animate-in fade-in zoom-in duration-200">
+            <div class="px-6 py-4 border-b border-neutral-200 flex items-center justify-between">
+                <div class="flex items-center space-x-3 truncate">
+                    <span id="modal-file-type-icon" class="text-burgundy"><i class="fa-solid fa-image"></i></span>
+                    <h3 id="modal-title" class="font-semibold text-neutral-900 truncate">Filename.jpg</h3>
+                </div>
+                <button onclick="closePreviewModal()" class="text-neutral-400 hover:text-neutral-700 p-2 rounded-lg transition">
+                    <i class="fa-solid fa-xmark text-lg"></i>
+                </button>
+            </div>
+            <div class="p-6 bg-neutral-900 flex items-center justify-center overflow-auto flex-1 min-h-[300px]">
+                <div id="modal-content-container" class="max-h-full max-w-full flex items-center justify-center">
+                    <!-- Rendered media preview -->
+                </div>
+            </div>
+            <div class="px-6 py-4 bg-white border-t border-neutral-200 flex flex-wrap items-center justify-between gap-4 text-xs text-neutral-600">
+                <div class="flex items-center space-x-4">
+                    <span>Size: <strong id="modal-size" class="text-neutral-900">2.4 MB</strong></span>
+                    <span>Uploaded: <strong id="modal-date" class="text-neutral-900">Oct 24, 2026</strong></span>
+                    <span>R2 Key: <strong id="modal-key" class="text-neutral-900 font-mono">media/filename.jpg</strong></span>
+                </div>
+                <div class="flex items-center space-x-2">
+                    <button onclick="copyFileUrl()" class="px-3 py-2 bg-neutral-100 hover:bg-neutral-200 rounded-lg text-neutral-700 font-medium transition flex items-center space-x-1.5">
+                        <i class="fa-solid fa-link"></i>
+                        <span>Copy R2 URL</span>
+                    </button>
+                    <a id="modal-download-btn" href="#" download class="px-4 py-2 bg-burgundy hover:bg-burgundy-light text-white rounded-lg font-medium transition flex items-center space-x-1.5">
+                        <i class="fa-solid fa-download"></i>
+                        <span>Download</span>
+                    </a>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Configuration Modal -->
+    <div id="config-modal" class="fixed inset-0 z-50 hidden bg-neutral-950/80 backdrop-blur-sm flex items-center justify-center p-4">
+        <div class="bg-white rounded-2xl max-w-lg w-full overflow-hidden shadow-2xl flex flex-col">
+            <div class="px-6 py-4 border-b border-neutral-200 flex items-center justify-between">
+                <h3 class="font-bold text-neutral-900 flex items-center space-x-2">
+                    <i class="fa-solid fa-cloud text-burgundy"></i>
+                    <span>Cloudflare R2 Storage Settings</span>
+                </h3>
+                <button onclick="closeConfigModal()" class="text-neutral-400 hover:text-neutral-700 p-2 rounded-lg transition">
+                    <i class="fa-solid fa-xmark text-lg"></i>
+                </button>
+            </div>
+            <div class="p-6 space-y-4">
+                <div>
+                    <label class="block text-xs font-semibold uppercase text-neutral-600 mb-1">R2 Bucket Name</label>
+                    <input type="text" id="cfg-bucket" value="media-assets-production" class="w-full px-3 py-2 border border-neutral-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-burgundy/50">
+                </div>
+                <div>
+                    <label class="block text-xs font-semibold uppercase text-neutral-600 mb-1">S3 API Endpoint / Public URL</label>
+                    <input type="text" id="cfg-endpoint" value="https://pub-sample.r2.dev" class="w-full px-3 py-2 border border-neutral-200 rounded-xl text-sm font-mono focus:outline-none focus:ring-2 focus:ring-burgundy/50">
+                </div>
+                <div>
+                    <label class="block text-xs font-semibold uppercase text-neutral-600 mb-1">Custom Domain / CDN</label>
+                    <input type="text" id="cfg-domain" value="https://media.yourdomain.com" class="w-full px-3 py-2 border border-neutral-200 rounded-xl text-sm font-mono focus:outline-none focus:ring-2 focus:ring-burgundy/50">
+                </div>
+                <div class="p-3 bg-sage/10 rounded-xl border border-sage/20 text-xs text-sage-dark flex items-start space-x-2">
+                    <i class="fa-solid fa-circle-info mt-0.5"></i>
+                    <span>Note: File deletion is restricted to administrators via the Cloudflare Dashboard console. Users have read-only access to remove or delete files.</span>
+                </div>
+            </div>
+            <div class="px-6 py-4 bg-neutral-50 border-t border-neutral-200 flex justify-end space-x-3">
+                <button onclick="closeConfigModal()" class="px-4 py-2 border border-neutral-300 rounded-xl text-xs font-medium text-neutral-700 hover:bg-neutral-100 transition">Cancel</button>
+                <button onclick="saveConfig()" class="px-4 py-2 bg-burgundy hover:bg-burgundy-light text-white rounded-xl text-xs font-medium transition shadow-sm">Save Configuration</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Footer -->
+    <footer class="bg-white border-t border-neutral-200 py-6 text-center text-xs text-neutral-500">
+        <p>Cloudflare R2 Storage Manager &bull; Built with Tailwind CSS & Vanilla JavaScript &bull; Admin Console Deletions Only</p>
+    </footer>
+
+    <!-- JavaScript Application Logic -->
+    <script>
+        let currentFilter = 'all';
+        let currentSearchQuery = '';
+
+        // Initial mock media items seeded in R2 storage
+        let mediaItems = [
+            {
+                id: 'r2-001',
+                name: 'mountain_sunrise.jpg',
+                type: 'image',
+                size: '3.4 MB',
+                url: 'https://images.unsplash.com/photo-1464822759023-fed622ff2c3b?auto=format&fit=crop&w=1200&q=80',
+                date: 'Oct 24, 2026',
+                key: 'photos/2026/mountain_sunrise.jpg'
+            },
+            {
+                id: 'r2-002',
+                name: 'coastal_drone_shot.mp4',
+                type: 'video',
+                size: '24.8 MB',
+                url: 'https://assets.mixkit.co/videos/preview/mixkit-aerial-view-of-waves-crashing-on-sand-beach-41610-large.mp4',
+                date: 'Oct 23, 2026',
+                key: 'videos/2026/coastal_drone_shot.mp4'
+            },
+            {
+                id: 'r2-003',
+                name: 'urban_architecture.jpg',
+                type: 'image',
+                size: '4.1 MB',
+                url: 'https://images.unsplash.com/photo-1486406146926-c627a92ad1ab?auto=format&fit=crop&w=1200&q=80',
+                date: 'Oct 22, 2026',
+                key: 'photos/2026/urban_architecture.jpg'
+            },
+            {
+                id: 'r2-004',
+                name: 'forest_mist.jpg',
+                type: 'image',
+                size: '5.2 MB',
+                url: 'https://images.unsplash.com/photo-1448375240586-882707db888b?auto=format&fit=crop&w=1200&q=80',
+                date: 'Oct 20, 2026',
+                key: 'photos/2026/forest_mist.jpg'
+            }
+        ];
+
+        // DOM Elements
+        const dropZone = document.getElementById('drop-zone');
+        const fileInput = document.getElementById('file-input');
+        const uploadQueue = document.getElementById('upload-queue');
+        const queueList = document.getElementById('queue-list');
+        const queueCount = document.getElementById('queue-count');
+        const mediaGrid = document.getElementById('media-grid');
+        const emptyState = document.getElementById('empty-state');
+
+        // Drag and drop prevent defaults
+        ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
+            dropZone.addEventListener(eventName, preventDefaults, false);
+            document.body.addEventListener(eventName, preventDefaults, false);
+        });
+
+        function preventDefaults(e) {
+            e.preventDefault();
+            e.stopPropagation();
+        }
+
+        ['dragenter', 'dragover'].forEach(eventName => {
+            dropZone.addEventListener(eventName, () => {
+                dropZone.classList.add('border-burgundy', 'bg-burgundy/10');
+            }, false);
+        });
+
+        ['dragleave', 'drop'].forEach(eventName => {
+            dropZone.addEventListener(eventName, () => {
+                dropZone.classList.remove('border-burgundy', 'bg-burgundy/10');
+            }, false);
+        });
+
+        dropZone.addEventListener('drop', (e) => {
+            const dt = e.dataTransfer;
+            const files = dt.files;
+            handleFiles(files);
+        });
+
+        fileInput.addEventListener('change', (e) => {
+            handleFiles(e.target.files);
+        });
+
+        function handleFiles(files) {
+            if (!files.length) return;
+            uploadQueue.classList.remove('hidden');
+            
+            Array.from(files).forEach((file, index) => {
+                simulateUpload(file);
+            });
+        }
+
+        function simulateUpload(file) {
+            const fileId = 'upload-' + Math.random().toString(36).substr(2, 9);
+            const isVideo = file.type.startsWith('video');
+            const fileIcon = isVideo ? 'fa-video' : 'fa-image';
+            const fileSizeFormatted = formatBytes(file.size);
+
+            const queueItemHTML = `
+                <div id="${fileId}" class="bg-white p-4 rounded-xl border border-neutral-200 shadow-sm flex flex-col gap-2">
+                    <div class="flex items-center justify-between text-sm">
+                        <div class="flex items-center space-x-3 truncate">
+                            <span class="w-8 h-8 rounded-lg bg-burgundy/10 text-burgundy flex items-center justify-center">
+                                <i class="fa-solid ${fileIcon}"></i>
+                            </span>
+                            <div class="truncate">
+                                <p class="font-medium text-neutral-800 truncate">${escapeHTML(file.name)}</p>
+                                <p class="text-xs text-neutral-400">${fileSizeFormatted} &bull; Uploading to R2...</p>
+                            </div>
+                        </div>
+                        <span class="progress-pct font-semibold text-xs text-burgundy">0%</span>
+                    </div>
+                    <div class="w-full bg-neutral-100 rounded-full h-2 overflow-hidden">
+                        <div class="progress-bar bg-burgundy h-full transition-all duration-300" style="width: 0%"></div>
+                    </div>
+                </div>
+            `;
+            queueList.insertAdjacentHTML('afterbegin', queueItemHTML);
+            updateQueueCount();
+
+            // Simulate progress ticks
+            const itemElement = document.getElementById(fileId);
+            const progressBar = itemElement.querySelector('.progress-bar');
+            const progressPct = itemElement.querySelector('.progress-pct');
+            
+            let progress = 0;
+            const interval = setInterval(() => {
+                progress += Math.floor(Math.random() * 15) + 10;
+                if (progress >= 100) {
+                    progress = 100;
+                    clearInterval(interval);
+                    
+                    // Update item to success
+                    progressBar.style.width = '100%';
+                    progressBar.classList.remove('bg-burgundy');
+                    progressBar.classList.add('bg-emerald-500');
+                    progressPct.textContent = 'Complete';
+                    progressPct.classList.remove('text-burgundy');
+                    progressPct.classList.add('text-emerald-600');
+
+                    // Add to media items collection
+                    const objectUrl = URL.createObjectURL(file);
+                    const newMedia = {
+                        id: 'r2-' + Date.now(),
+                        name: file.name,
+                        type: isVideo ? 'video' : 'image',
+                        size: fileSizeFormatted,
+                        url: objectUrl,
+                        date: 'Just now',
+                        key: (isVideo ? 'videos/2026/' : 'photos/2026/') + file.name
+                    };
+
+                    mediaItems.unshift(newMedia);
+                    renderMedia();
+                    showToast(`Successfully uploaded ${file.name} to R2`);
+
+                    // Remove from queue after delay
+                    setTimeout(() => {
+                        itemElement.style.opacity = '0';
+                        setTimeout(() => {
+                            itemElement.remove();
+                            updateQueueCount();
+                        }, 300);
+                    }, 2500);
+                } else {
+                    progressBar.style.width = progress + '%';
+                    progressPct.textContent = progress + '%';
+                }
+            }, 200);
+        }
+
+        function updateQueueCount() {
+            const count = queueList.children.length;
+            queueCount.textContent = count + (count === 1 ? ' item' : ' items');
+            if (count === 0) {
+                uploadQueue.classList.add('hidden');
+            }
+        }
+
+        function renderMedia() {
+            mediaGrid.innerHTML = '';
+            
+            const filtered = mediaItems.filter(item => {
+                const matchesFilter = currentFilter === 'all' || item.type === currentFilter;
+                const matchesSearch = item.name.toLowerCase().includes(currentSearchQuery.toLowerCase());
+                return matchesFilter && matchesSearch;
+            });
+
+            if (filtered.length === 0) {
+                emptyState.classList.remove('hidden');
+                emptyState.classList.add('flex');
+                return;
+            } else {
+                emptyState.classList.add('hidden');
+                emptyState.classList.remove('flex');
+            }
+
+            filtered.forEach(item => {
+                const isVideo = item.type === 'video';
+                const cardHTML = `
+                    <div class="bg-white rounded-2xl overflow-hidden border border-neutral-200/80 shadow-sm hover:shadow-md transition-all group flex flex-col">
+                        <div class="relative aspect-[4/3] bg-neutral-100 overflow-hidden cursor-pointer" onclick="openPreview('${item.id}')">
+                            ${isVideo ? 
+                                `<video src="${item.url}" class="w-full h-full object-cover group-hover:scale-105 transition duration-300 pointer-events-none muted></video>
+                                <div class="absolute inset-0 bg-neutral-950/30 flex items-center justify-center group-hover:bg-neutral-950/40 transition">
+                                    <div class="w-12 h-12 rounded-full bg-white/90 text-burgundy flex items-center justify-center shadow-lg">
+                                        <i class="fa-solid fa-play ml-0.5"></i>
+                                    </div>
+                                </div>` :
+                                `<img src="${item.url}" alt="${escapeHTML(item.name)}" class="w-full h-full object-cover group-hover:scale-105 transition duration-300" onerror="this.src='https://placehold.co/600x400/F9F8F6/581845?text=Image+Load+Error'">`
+                            }
+                            <span class="absolute top-3 left-3 px-2.5 py-1 rounded-full text-[10px] font-semibold uppercase tracking-wider bg-neutral-900/70 text-white backdrop-blur-md">
+                                ${item.type}
+                            </span>
+                        </div>
+                        <div class="p-4 flex flex-col flex-1 justify-between gap-3">
+                            <div class="truncate">
+                                <h4 class="font-semibold text-neutral-900 text-sm truncate" title="${escapeHTML(item.name)}">${escapeHTML(item.name)}</h4>
+                                <div class="flex items-center justify-between text-xs text-neutral-400 mt-1">
+                                    <span>${item.size}</span>
+                                    <span>${item.date}</span>
+                                </div>
+                            </div>
+                            <div class="flex items-center justify-between pt-2 border-t border-neutral-100">
+                                <button onclick="openPreview('${item.id}')" class="text-xs font-medium text-burgundy hover:underline flex items-center space-x-1">
+                                    <i class="fa-solid fa-eye"></i>
+                                    <span>Preview & Details</span>
+                                </button>
+                                <span class="text-[11px] text-neutral-400 font-medium">Read-only</span>
+                            </div>
+                        </div>
+                    </div>
+                `;
+                mediaGrid.insertAdjacentHTML('beforeend', cardHTML);
+            });
+        }
+
+        function setFilter(filter) {
+            currentFilter = filter;
+            ['all', 'image', 'video'].forEach(f => {
+                const btn = document.getElementById(`filter-${f}`);
+                if (f === filter) {
+                    btn.className = 'px-3 py-1.5 rounded-lg bg-burgundy text-white transition';
+                } else {
+                    btn.className = 'px-3 py-1.5 rounded-lg text-neutral-600 hover:text-neutral-900 transition';
+                }
+            });
+            renderMedia();
+        }
+
+        function filterMedia() {
+            currentSearchQuery = document.getElementById('search-input').value;
+            renderMedia();
+        }
+
+        let activePreviewItem = null;
+
+        function openPreview(id) {
+            const item = mediaItems.find(m => m.id === id);
+            if (!item) return;
+            activePreviewItem = item;
+
+            document.getElementById('modal-title').textContent = item.name;
+            document.getElementById('modal-size').textContent = item.size;
+            document.getElementById('modal-date').textContent = item.date;
+            document.getElementById('modal-key').textContent = item.key;
+            document.getElementById('modal-download-btn').href = item.url;
+            document.getElementById('modal-download-btn').setAttribute('download', item.name);
+
+            const iconContainer = document.getElementById('modal-file-type-icon');
+            iconContainer.innerHTML = item.type === 'video' ? '<i class="fa-solid fa-video"></i>' : '<i class="fa-solid fa-image"></i>';
+
+            const container = document.getElementById('modal-content-container');
+            if (item.type === 'video') {
+                container.innerHTML = `<video src="${item.url}" controls autoplay class="max-h-[60vh] max-w-full rounded-xl shadow-lg"></video>`;
+            } else {
+                container.innerHTML = `<img src="${item.url}" alt="${escapeHTML(item.name)}" class="max-h-[60vh] max-w-full object-contain rounded-xl shadow-lg">`;
+            }
+
+            document.getElementById('preview-modal').classList.remove('hidden');
+        }
+
+        function closePreviewModal() {
+            document.getElementById('preview-modal').classList.add('hidden');
+            document.getElementById('modal-content-container').innerHTML = '';
+        }
+
+        function copyFileUrl() {
+            if (!activePreviewItem) return;
+            const fullUrl = document.getElementById('cfg-domain').value + '/' + activePreviewItem.key;
+            
+            // Clipboard fallback
+            const textarea = document.createElement('textarea');
+            textarea.value = fullUrl;
+            document.body.appendChild(textarea);
+            textarea.select();
+            try {
+                document.execCommand('copy');
+                showToast('Copied R2 Public URL to clipboard!');
+            } catch (err) {
+                showToast('Failed to copy URL');
+            }
+            document.body.removeChild(textarea);
+        }
+
+        function openConfigModal() {
+            document.getElementById('config-modal').classList.remove('hidden');
+        }
+
+        function closeConfigModal() {
+            document.getElementById('config-modal').classList.add('hidden');
+        }
+
+        function saveConfig() {
+            closeConfigModal();
+            showToast('Cloudflare R2 configuration updated successfully');
+        }
+
+        function showToast(message) {
+            const toast = document.getElementById('toast');
+            const msgEl = document.getElementById('toast-message');
+            msgEl.textContent = message;
+            
+            toast.classList.remove('hidden', 'translate-y-10', 'opacity-0');
+            setTimeout(() => {
+                toast.classList.add('translate-y-10', 'opacity-0');
+                setTimeout(() => {
+                    toast.classList.add('hidden');
+                }, 300);
+            }, 3000);
+        }
+
+        function formatBytes(bytes, decimals = 2) {
+            if (bytes === 0) return '0 Bytes';
+            const k = 1024;
+            const dm = decimals < 0 ? 0 : decimals;
+            const sizes = ['Bytes', 'KB', 'MB', 'GB', 'TB'];
+            const i = Math.floor(Math.log(bytes) / Math.log(k));
+            return parseFloat((bytes / Math.pow(k, i)).toFixed(dm)) + ' ' + sizes[i];
+        }
+
+        function escapeHTML(str) {
+            return str.replace(/[&<>'"]/g, 
+                tag => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' }[tag] || tag)
+            );
+        }
+
+        // Initial render on load
+        window.onload = function() {
+            renderMedia();
+        };
+    </script>
+</body>
+</html>

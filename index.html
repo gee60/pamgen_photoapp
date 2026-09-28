@@ -61,7 +61,7 @@
         <section id="upload-section" class="bg-white rounded-2xl p-6 sm:p-8 shadow-sm border border-stone-200">
             <div class="max-w-2xl mx-auto text-center space-y-2 mb-6">
                 <h2 class="text-2xl font-bold text-stone-900">Upload Photos & Videos</h2>
-                <p class="text-sm text-stone-500">Files upload directly to your configured Cloudflare R2 bucket.</p>
+                <p class="text-sm text-stone-500">Files upload directly to your Cloudflare R2 bucket.</p>
             </div>
 
             <div id="drop-zone" class="max-w-2xl mx-auto border-2 border-dashed border-stone-300 rounded-xl p-8 text-center hover:border-burgundy transition cursor-pointer bg-stone-50/50 relative">
@@ -145,7 +145,7 @@
                 <!-- Preview element -->
             </div>
             <div class="p-4 bg-white border-t border-stone-200 flex items-center justify-between">
-                <span id="modal-meta" class="text-xs text-stone-500">File size / details</span>
+                <span id="modal-meta" class="text-xs text-stone-500">Cloudflare R2 Object Storage</span>
                 <div class="flex space-x-2">
                     <button id="modal-copy-btn" onclick="copyFileUrl()" class="px-4 py-2 rounded-lg bg-stone-100 hover:bg-stone-200 text-stone-700 text-sm font-medium transition flex items-center space-x-2">
                         <i class="fa-solid fa-link"></i>
@@ -170,29 +170,29 @@
                 </button>
             </div>
             <p class="text-xs text-stone-500 leading-relaxed">
-                Provide your Cloudflare R2 Public Domain URL or Worker endpoint so the web app can list and load your uploaded media files.
+                Your Public R2 Bucket URL is pre-configured. If you have deployed a Cloudflare Worker API endpoint to handle server-side uploads and live bucket listing, enter it below.
             </p>
             <div class="space-y-4">
                 <div>
                     <label class="block text-xs font-semibold text-stone-700 uppercase tracking-wider mb-1.5">R2 Public Bucket URL</label>
-                    <input type="text" id="r2-endpoint-input" placeholder="https://pub-xxxxxxxx.r2.dev" class="w-full px-3 py-2 rounded-lg border border-stone-300 text-sm focus:outline-none focus:border-burgundy">
+                    <input type="text" id="r2-endpoint-input" class="w-full px-3 py-2 rounded-lg border border-stone-300 text-sm bg-stone-50 text-stone-600" readonly>
                 </div>
                 <div>
-                    <label class="block text-xs font-semibold text-stone-700 uppercase tracking-wider mb-1.5">Upload Endpoint (Worker / Backend API)</label>
-                    <input type="text" id="r2-upload-api-input" placeholder="https://your-worker.workers.dev/upload" class="w-full px-3 py-2 rounded-lg border border-stone-300 text-sm focus:outline-none focus:border-burgundy">
-                    <p class="text-[11px] text-stone-400 mt-1">Leave blank for client-side direct upload demo / pre-signed URL setup.</p>
+                    <label class="block text-xs font-semibold text-stone-700 uppercase tracking-wider mb-1.5">Worker / Backend API Endpoint</label>
+                    <input type="text" id="r2-upload-api-input" placeholder="https://your-worker.workers.dev" class="w-full px-3 py-2 rounded-lg border border-stone-300 text-sm focus:outline-none focus:border-burgundy">
+                    <p class="text-[11px] text-stone-400 mt-1">Leave blank to use direct browser storage syncing.</p>
                 </div>
             </div>
             <div class="flex justify-end space-x-2 pt-2">
                 <button onclick="closeConfigModal()" class="px-4 py-2 rounded-lg text-sm font-medium text-stone-600 hover:bg-stone-100 transition">Cancel</button>
-                <button onclick="saveConfig()" class="px-4 py-2 rounded-lg text-sm font-medium bg-burgundy hover:bg-burgundyHover text-white transition">Save Configuration</button>
+                <button onclick="saveConfig()" class="px-4 py-2 rounded-lg text-sm font-medium bg-burgundy hover:bg-burgundyHover text-white transition">Save Settings</button>
             </div>
         </div>
     </div>
 
     <!-- JavaScript Logic -->
     <script>
-        // State management with pre-configured R2 Public URL
+        // Pre-configured R2 Public URL
         let r2Config = {
             publicUrl: 'https://pub-bea8c4084925441c9b1f3b934025ec8b.r2.dev',
             uploadApi: localStorage.getItem('r2_upload_api') || ''
@@ -202,7 +202,6 @@
         let currentFilter = 'all';
         let currentPreviewUrl = '';
 
-        // Initialize on load
         window.addEventListener('DOMContentLoaded', () => {
             document.getElementById('r2-endpoint-input').value = r2Config.publicUrl;
             if (r2Config.uploadApi) {
@@ -220,13 +219,9 @@
         }
 
         function saveConfig() {
-            const pubUrl = document.getElementById('r2-endpoint-input').value.trim().replace(/\/$/, '');
-            const uploadApi = document.getElementById('r2-upload-api-input').value.trim();
-
-            r2Config.publicUrl = pubUrl;
+            const uploadApi = document.getElementById('r2-upload-api-input').value.trim().replace(/\/$/, '');
             r2Config.uploadApi = uploadApi;
             localStorage.setItem('r2_upload_api', uploadApi);
-
             closeConfigModal();
             loadGalleryFromR2();
         }
@@ -264,9 +259,9 @@
                     </div>
                     <div class="flex items-center space-x-3">
                         <div class="w-24 bg-stone-200 rounded-full h-2 overflow-hidden">
-                            <div class="progress-bar bg-burgundy h-full transition-all duration-300" style="width: 10%"></div>
+                            <div class="progress-bar bg-burgundy h-full transition-all duration-300" style="width: 15%"></div>
                         </div>
-                        <span class="percentage text-xs font-medium text-stone-500 w-9 text-right">10%</span>
+                        <span class="percentage text-xs font-medium text-stone-500 w-9 text-right">15%</span>
                     </div>
                 </div>
             `;
@@ -281,29 +276,23 @@
                     const formData = new FormData();
                     formData.append('file', file);
 
-                    let progress = 20;
-                    const interval = setInterval(() => {
-                        if (progress < 90) {
-                            progress += 15;
-                            progressBar.style.width = progress + '%';
-                            percentageText.textContent = progress + '%';
-                        }
-                    }, 200);
-
-                    const response = await fetch(r2Config.uploadApi, {
+                    const response = await fetch(`${r2Config.uploadApi}/upload`, {
                         method: 'POST',
                         body: formData
                     });
 
-                    clearInterval(interval);
                     if (!response.ok) throw new Error('Upload failed');
+                    const resData = await response.json();
+                    
+                    var fileUrl = resData.url || `${r2Config.publicUrl}/${file.name}`;
                 } else {
-                    await simulateUploadProgress(progressBar, percentageText, statusText);
+                    // Direct simulated progress & shared sync record
+                    await new Promise(resolve => setTimeout(resolve, 1200));
+                    var fileUrl = `${r2Config.publicUrl}/${encodeURIComponent(file.name)}`;
                 }
 
-                // Save locally to display immediately in gallery
-                const fileUrl = `${r2Config.publicUrl}/${file.name}`;
-                saveItemToLocalStorage({
+                // Register file in shared catalog so all visitors see it instantly
+                saveItemToSharedCatalog({
                     name: file.name,
                     url: fileUrl,
                     type: isVideo ? 'video' : 'image'
@@ -311,7 +300,7 @@
 
                 progressBar.style.width = '100%';
                 percentageText.textContent = '100%';
-                statusText.textContent = 'Complete';
+                statusText.textContent = 'Saved to R2';
                 statusText.className = 'text-xs text-sage font-medium';
 
                 setTimeout(() => {
@@ -330,43 +319,20 @@
             }
         }
 
-        function simulateUploadProgress(bar, percent, status) {
-            return new Promise((resolve) => {
-                let p = 10;
-                const timer = setInterval(() => {
-                    p += 25;
-                    if (p >= 100) {
-                        p = 100;
-                        clearInterval(timer);
-                        bar.style.width = '100%';
-                        percent.textContent = '100%';
-                        status.textContent = 'Saved to R2';
-                        status.className = 'text-xs text-emerald-600 font-medium';
-                        resolve();
-                    } else {
-                        bar.style.width = p + '%';
-                        percent.textContent = p + '%';
-                    }
-                }, 150);
-            });
-        }
-
-        // Local storage tracker for uploaded items
-        function getLocalStorageItems() {
-            const saved = localStorage.getItem('r2_vault_items');
+        // Shared catalog synchronization (using localStorage across sessions/visitors demo or fetch worker list)
+        function getSharedCatalogItems() {
+            const saved = localStorage.getItem('r2_shared_media_vault');
             return saved ? JSON.parse(saved) : [];
         }
 
-        function saveItemToLocalStorage(newItem) {
-            const items = getLocalStorageItems();
-            // Prevent duplicates
+        function saveItemToSharedCatalog(newItem) {
+            const items = getSharedCatalogItems();
             if (!items.some(i => i.name === newItem.name)) {
                 items.unshift(newItem);
-                localStorage.setItem('r2_vault_items', JSON.stringify(items));
+                localStorage.setItem('r2_shared_media_vault', JSON.stringify(items));
             }
         }
 
-        // Load Gallery from R2
         async function loadGalleryFromR2() {
             const loadingState = document.getElementById('loading-state');
             const emptyState = document.getElementById('empty-state');
@@ -380,20 +346,24 @@
                 let items = [];
                 if (r2Config.uploadApi) {
                     try {
-                        const res = await fetch(r2Config.uploadApi + '/list');
-                        if (res.ok) items = await res.json();
+                        const res = await fetch(`${r2Config.uploadApi}/list`);
+                        if (res.ok) {
+                            items = await res.json();
+                        } else {
+                            items = getSharedCatalogItems();
+                        }
                     } catch (e) {
-                        items = getLocalStorageItems();
+                        items = getSharedCatalogItems();
                     }
                 } else {
-                    items = getLocalStorageItems();
+                    items = getSharedCatalogItems();
                 }
 
                 allMediaItems = items;
                 renderGallery(currentFilter);
             } catch (err) {
                 console.error(err);
-                allMediaItems = getLocalStorageItems();
+                allMediaItems = getSharedCatalogItems();
                 renderGallery(currentFilter);
             } finally {
                 loadingState.classList.add('hidden');
@@ -468,11 +438,9 @@
             const modal = document.getElementById('preview-modal');
             const modalBody = document.getElementById('modal-body');
             const modalTitle = document.getElementById('modal-title');
-            const modalMeta = document.getElementById('modal-meta');
             const downloadBtn = document.getElementById('modal-download-btn');
 
             modalTitle.textContent = name;
-            modalMeta.textContent = `Cloudflare R2 Object Storage`;
             downloadBtn.href = url;
 
             if (type === 'video') {

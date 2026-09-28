@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Media Vault &bull; Cloudflare R2 Connected</title>
+    <title>PamGen Photo App &bull; Upload Photos and Videos from the Event</title>
     <!-- Tailwind CSS CDN -->
     <script src="https://cdn.tailwindcss.com"></script>
     <script>
@@ -39,13 +39,6 @@
                     <h1 class="text-xl font-bold tracking-tight text-stone-900">Media Vault</h1>
                     <p class="text-xs text-stone-500">Cloudflare R2 Direct Storage</p>
                 </div>
-            </div>
-
-            <div class="flex items-center space-x-3">
-                <button onclick="document.getElementById('upload-section').scrollIntoView({behavior: 'smooth'})" class="inline-flex items-center space-x-2 px-4 py-2 rounded-lg text-sm font-medium bg-burgundy hover:bg-burgundyHover text-white transition shadow-sm">
-                    <i class="fa-solid fa-cloud-arrow-up"></i>
-                    <span>Upload Media</span>
-                </button>
             </div>
         </div>
     </header>
@@ -142,15 +135,11 @@
             </div>
             <div class="p-4 bg-white border-t border-stone-200 flex items-center justify-between">
                 <span id="modal-meta" class="text-xs text-stone-500">Cloudflare R2 Object Storage</span>
-                <div class="flex space-x-2">
+                <div>
                     <button id="modal-copy-btn" onclick="copyFileUrl()" class="px-4 py-2 rounded-lg bg-stone-100 hover:bg-stone-200 text-stone-700 text-sm font-medium transition flex items-center space-x-2">
                         <i class="fa-solid fa-link"></i>
                         <span>Copy Public URL</span>
                     </button>
-                    <a id="modal-download-btn" href="#" target="_blank" download class="px-4 py-2 rounded-lg bg-burgundy hover:bg-burgundyHover text-white text-sm font-medium transition flex items-center space-x-2">
-                        <i class="fa-solid fa-download"></i>
-                        <span>Download</span>
-                    </a>
                 </div>
             </div>
         </div>
@@ -382,10 +371,8 @@
             const modal = document.getElementById('preview-modal');
             const modalBody = document.getElementById('modal-body');
             const modalTitle = document.getElementById('modal-title');
-            const downloadBtn = document.getElementById('modal-download-btn');
 
             modalTitle.textContent = name;
-            downloadBtn.href = url;
 
             if (type === 'video') {
                 modalBody.innerHTML = `<video src="${url}" controls autoplay class="max-h-[65vh] rounded-lg"></video>`;

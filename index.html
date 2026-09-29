@@ -34,7 +34,7 @@
             <div class="flex items-center space-x-3">
                 <img src="https://github.com/user-attachments/assets/637742dc-b7fa-494c-9a90-924e963304b6" alt="PamGen App Icon" class="w-10 h-10 rounded-xl object-cover shadow-md">
                 <div>
-                    <h1 class="text-2xl font-bold tracking-tight text-stone-900" style="font-family: 'Times New Roman', Times, serif;"></h1>
+                    <h1 class="text-2xl font-bold tracking-tight text-stone-900" style="font-family: 'Times New Roman', Times, serif;">PamGen App</h1>
                 </div>
             </div>
         </div>
@@ -168,14 +168,14 @@
                         </div>
                         <div class="truncate">
                             <p class="font-medium text-stone-800 truncate">${file.name}</p>
-                            <p class="text-xs text-stone-400 file-status">Uploading to R2...</p>
+                            <p class="text-xs text-stone-400 file-status">Preparing direct upload...</p>
                         </div>
                     </div>
                     <div class="flex items-center space-x-3">
                         <div class="w-24 bg-stone-200 rounded-full h-2 overflow-hidden">
-                            <div class="progress-bar bg-burgundy h-full transition-all duration-300" style="width: 15%"></div>
+                            <div class="progress-bar bg-burgundy h-full transition-all duration-300" style="width: 10%"></div>
                         </div>
-                        <span class="percentage text-xs font-medium text-stone-500 w-9 text-right">15%</span>
+                        <span class="percentage text-xs font-medium text-stone-500 w-9 text-right">10%</span>
                     </div>
                 </div>
             `;
@@ -186,25 +186,29 @@
             const statusText = itemElement.querySelector('.file-status');
 
             try {
-                let fileUrl = `${r2Config.publicUrl}/${encodeURIComponent(file.name)}`;
+                // Step 1: Request presigned upload URL from Worker
+                const res = await fetch(`${r2Config.uploadApi.replace(/\/$/, '')}/get-upload-url`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ filename: file.name, contentType: file.type })
+                });
 
-                if (r2Config.uploadApi) {
-                    const formData = new FormData();
-                    formData.append('file', file);
+                if (!res.ok) throw new Error('Failed to generate upload session');
+                const { uploadUrl, url: fileUrl } = await res.json();
 
-                    const response = await fetch(`${r2Config.uploadApi.replace(/\/$/, '')}/upload`, {
-                        method: 'POST',
-                        body: formData
-                    });
+                statusText.textContent = isVideo ? 'Uploading video...' : 'Uploading photo...';
+                progressBar.style.width = '40%';
+                percentageText.textContent = '40%';
 
-                    if (!response.ok) throw new Error('Upload failed');
-                    const resData = await response.json();
-                    fileUrl = resData.url || fileUrl;
-                } else {
-                    await new Promise(resolve => setTimeout(resolve, 1200));
-                }
+                // Step 2: Upload large file directly to R2 storage via PUT stream
+                const uploadResponse = await fetch(uploadUrl, {
+                    method: 'PUT',
+                    headers: { 'Content-Type': file.type || 'application/octet-stream' },
+                    body: file
+                });
 
-                // Register file in local shared sync for fallback or immediate view
+                if (!uploadResponse.ok) throw new Error('Direct upload to R2 failed');
+
                 saveItemToSharedCatalog({
                     name: file.name,
                     url: fileUrl,
@@ -226,7 +230,7 @@
 
             } catch (err) {
                 console.error(err);
-                statusText.textContent = 'Upload failed';
+                statusText.textContent = 'Upload failed (File too large or timeout)';
                 statusText.className = 'text-xs text-red-500 font-medium';
                 progressBar.className = 'progress-bar bg-red-500 h-full';
             }

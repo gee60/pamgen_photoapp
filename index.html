@@ -127,7 +127,7 @@
 
     <!-- JavaScript Logic -->
     <script>
-        // Hardcoded R2 Public URL and Worker Endpoint
+        // R2 Public URL and Worker API Endpoint
         let r2Config = {
             publicUrl: 'https://pub-bea8c4084925441c9b1f3b934025ec8b.r2.dev',
             uploadApi: 'https://photoapp-worker.myboard.workers.dev'
@@ -159,7 +159,7 @@
         async function uploadSingleFile(file, queueList) {
             const fileId = 'file-' + Math.random().toString(36).substring(2, 9);
             const isVideo = file.type.startsWith('video');
-            
+
             const itemHTML = `
                 <div id="${fileId}" class="flex items-center justify-between p-3 rounded-xl bg-stone-50 border border-stone-200 text-sm">
                     <div class="flex items-center space-x-3 truncate">
@@ -168,14 +168,14 @@
                         </div>
                         <div class="truncate">
                             <p class="font-medium text-stone-800 truncate">${file.name}</p>
-                            <p class="text-xs text-stone-400 file-status">Preparing direct upload...</p>
+                            <p class="text-xs text-stone-400 file-status">Requesting upload URL...</p>
                         </div>
                     </div>
                     <div class="flex items-center space-x-3">
                         <div class="w-24 bg-stone-200 rounded-full h-2 overflow-hidden">
-                            <div class="progress-bar bg-burgundy h-full transition-all duration-300" style="width: 10%"></div>
+                            <div class="progress-bar bg-burgundy h-full transition-all duration-300" style="width: 5%"></div>
                         </div>
-                        <span class="percentage text-xs font-medium text-stone-500 w-9 text-right">10%</span>
+                        <span class="percentage text-xs font-medium text-stone-500 w-9 text-right">5%</span>
                     </div>
                 </div>
             `;
@@ -187,28 +187,81 @@
 
             try {
                 // Step 1: Request presigned upload URL from Worker
+                statusText.textContent = 'Requesting upload URL...';
+                progressBar.style.width = '10%';
+                percentageText.textContent = '10%';
+
                 const res = await fetch(`${r2Config.uploadApi.replace(/\/$/, '')}/get-upload-url`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ filename: file.name, contentType: file.type })
+                    body: JSON.stringify({
+                        filename: file.name,
+                        contentType: file.type || 'application/octet-stream'
+                    })
                 });
 
-                if (!res.ok) throw new Error('Failed to generate upload session');
-                const { uploadUrl, url: fileUrl } = await res.json();
+                if (!res.ok) {
+                    const errBody = await res.text();
+                    throw new Error(`Worker responded ${res.status}: ${errBody}`);
+                }
 
-                statusText.textContent = isVideo ? 'Uploading video...' : 'Uploading photo...';
-                progressBar.style.width = '40%';
-                percentageText.textContent = '40%';
+                const data = await res.json();
+                const uploadUrl = data.uploadUrl || data.url;
 
-                // Step 2: Upload large file directly to R2 storage via PUT stream
-                const uploadResponse = await fetch(uploadUrl, {
-                    method: 'PUT',
-                    headers: { 'Content-Type': file.type || 'application/octet-stream' },
-                    body: file
+                if (!uploadUrl) {
+                    throw new Error('Worker did not return an upload URL');
+                }
+
+                // Construct the public R2 URL for this file (used for gallery display)
+                const fileUrl = `${r2Config.publicUrl.replace(/\/$/, '')}/${file.name}`;
+
+                statusText.textContent = isVideo ? 'Uploading video directly to R2...' : 'Uploading photo directly to R2...';
+                progressBar.style.width = '15%';
+                percentageText.textContent = '15%';
+
+                // Step 2: Upload directly to R2 using XMLHttpRequest for real progress tracking
+                await new Promise((resolve, reject) => {
+                    const xhr = new XMLHttpRequest();
+                    xhr.open('PUT', uploadUrl, true);
+                    xhr.setRequestHeader('Content-Type', file.type || 'application/octet-stream');
+
+                    // Track upload progress
+                    xhr.upload.addEventListener('progress', (e) => {
+                        if (e.lengthComputable) {
+                            // Map 15%–95% range to the actual upload phase
+                            const uploaded = e.loaded / e.total;
+                            const pct = Math.round(15 + uploaded * 80);
+                            progressBar.style.width = pct + '%';
+                            percentageText.textContent = pct + '%';
+
+                            if (isVideo) {
+                                const mbDone = (e.loaded / (1024 * 1024)).toFixed(1);
+                                const mbTotal = (e.total / (1024 * 1024)).toFixed(1);
+                                statusText.textContent = `Uploading video... ${mbDone} / ${mbTotal} MB`;
+                            }
+                        }
+                    });
+
+                    xhr.addEventListener('load', () => {
+                        if (xhr.status >= 200 && xhr.status < 300) {
+                            resolve();
+                        } else {
+                            reject(new Error(`R2 upload failed with status ${xhr.status}: ${xhr.responseText}`));
+                        }
+                    });
+
+                    xhr.addEventListener('error', () => {
+                        reject(new Error('Network error during R2 upload'));
+                    });
+
+                    xhr.addEventListener('abort', () => {
+                        reject(new Error('Upload aborted'));
+                    });
+
+                    xhr.send(file);
                 });
 
-                if (!uploadResponse.ok) throw new Error('Direct upload to R2 failed');
-
+                // Step 3: Save to shared catalog (localStorage) for gallery display
                 saveItemToSharedCatalog({
                     name: file.name,
                     url: fileUrl,
@@ -229,10 +282,11 @@
                 }, 1000);
 
             } catch (err) {
-                console.error(err);
-                statusText.textContent = 'Upload failed (File too large or timeout)';
+                console.error('Upload error:', err);
+                statusText.textContent = `Upload failed: ${err.message || 'File too large or timeout'}`;
                 statusText.className = 'text-xs text-red-500 font-medium';
                 progressBar.className = 'progress-bar bg-red-500 h-full';
+                percentageText.textContent = '!';
             }
         }
 
@@ -307,7 +361,7 @@
                 const isVideo = item.type === 'video';
                 const card = document.createElement('div');
                 card.className = 'bg-white rounded-xl overflow-hidden border border-stone-200 shadow-sm hover:shadow-md transition group flex flex-col';
-                
+
                 card.innerHTML = `
                     <div class="relative aspect-square bg-stone-100 overflow-hidden cursor-pointer" onclick="openPreview('${item.url}', '${item.name}', '${item.type}')">
                         ${isVideo ? `

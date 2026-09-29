@@ -1,0 +1,311 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Media Vault &bull; Upload Photos and Videos</title>
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        burgundy: '#581845',
+                        burgundyHover: '#401132',
+                        sage: '#8A9A86',
+                    }
+                }
+            }
+        }
+    </script>
+    <!-- FontAwesome for icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+</head>
+<body class="bg-transparent text-stone-800 min-h-screen flex flex-col items-center justify-start font-sans p-4 pt-8">
+
+    <!-- Main Content Container -->
+    <main class="w-full max-w-md mx-auto space-y-8 text-center">
+
+        <!-- Minimalist Hero Upload Section -->
+        <div class="space-y-4">
+            <div class="relative inline-block w-full">
+                <input type="file" id="file-input" multiple accept="image/*,video/*" class="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10" onchange="handleFileSelect(event)">
+                <button class="w-full text-white text-base font-medium px-8 py-5 rounded-2xl shadow-md hover:shadow-lg transition transform hover:-translate-y-0.5 flex items-center justify-center" style="background-color: #c9a0dc;">
+                    <span>Upload Photos and Videos</span>
+                </button>
+            </div>
+        </div>
+
+        <!-- Upload Queue / Progress -->
+        <div id="upload-queue" class="space-y-3 hidden text-left">
+            <h3 class="text-xs font-semibold uppercase tracking-wider text-stone-400">Upload Queue</h3>
+            <div id="queue-list" class="space-y-2"></div>
+        </div>
+
+    </main>
+
+    <!-- JavaScript Logic -->
+    <script>
+        // R2 Public URL and Worker API Endpoint
+        let r2Config = {
+            publicUrl: 'https://pub-bea8c4084925441c9b1f3b934025ec8b.r2.dev',
+            uploadApi: 'https://photoapp-worker.myboard.workers.dev'
+        };
+
+        // Multipart threshold: files larger than this use multipart upload
+        const MULTIPART_THRESHOLD = 50 * 1024 * 1024; // 50 MB
+
+        // Handle File Selection and Upload
+        function handleFileSelect(event) {
+            const files = event.target.files;
+            if (!files || files.length === 0) return;
+
+            const queueContainer = document.getElementById('upload-queue');
+            const queueList = document.getElementById('queue-list');
+            queueContainer.classList.remove('hidden');
+
+            Array.from(files).forEach((file) => {
+                uploadSingleFile(file, queueList);
+            });
+
+            event.target.value = '';
+        }
+
+        async function uploadSingleFile(file, queueList) {
+            const fileId = 'file-' + Math.random().toString(36).substring(2, 9);
+            const isVideo = file.type.startsWith('video');
+
+            const itemHTML = `
+                <div id="${fileId}" class="flex items-center justify-between p-3 rounded-xl bg-white border border-stone-200 text-sm shadow-sm">
+                    <div class="flex items-center space-x-3 truncate">
+                        <div class="w-8 h-8 rounded-lg bg-burgundy/10 text-burgundy flex items-center justify-center flex-shrink-0">
+                            <i class="fa-solid ${isVideo ? 'fa-video' : 'fa-image'}"></i>
+                        </div>
+                        <div class="truncate">
+                            <p class="font-medium text-stone-800 truncate">${file.name}</p>
+                            <p class="text-xs text-stone-400 file-status">Starting...</p>
+                        </div>
+                    </div>
+                    <div class="flex items-center space-x-3">
+                        <div class="w-20 bg-stone-200 rounded-full h-2 overflow-hidden">
+                            <div class="progress-bar bg-burgundy h-full transition-all duration-300" style="width: 0%"></div>
+                        </div>
+                        <span class="percentage text-xs font-medium text-stone-500 w-9 text-right">0%</span>
+                    </div>
+                </div>
+            `;
+            queueList.insertAdjacentHTML('beforeend', itemHTML);
+            const itemElement = document.getElementById(fileId);
+            const progressBar = itemElement.querySelector('.progress-bar');
+            const percentageText = itemElement.querySelector('.percentage');
+            const statusText = itemElement.querySelector('.file-status');
+
+            try {
+                const contentType = file.type || 'application/octet-stream';
+                const fileUrl = `${r2Config.publicUrl.replace(/\/$/, '')}/${file.name}`;
+
+                // ── Choose upload strategy based on file size ──
+                if (file.size > MULTIPART_THRESHOLD) {
+                    await uploadMultipart(file, contentType, progressBar, percentageText, statusText);
+                } else {
+                    await uploadSingle(file, contentType, progressBar, percentageText, statusText);
+                }
+
+                // Save to shared catalog (local reference if needed)
+                saveItemToSharedCatalog({
+                    name: file.name,
+                    url: fileUrl,
+                    type: isVideo ? 'video' : 'image'
+                });
+
+                progressBar.style.width = '100%';
+                percentageText.textContent = '100%';
+                statusText.textContent = 'Uploaded successfully';
+                statusText.className = 'text-xs text-sage font-medium';
+
+                setTimeout(() => {
+                    itemElement.remove();
+                    if (queueList.children.length === 0) {
+                        document.getElementById('upload-queue').classList.add('hidden');
+                    }
+                }, 2000);
+
+            } catch (err) {
+                console.error('Upload error:', err);
+                statusText.textContent = `Upload failed: ${err.message || 'Unknown error'}`;
+                statusText.className = 'text-xs text-red-500 font-medium';
+                progressBar.className = 'progress-bar bg-red-500 h-full';
+                percentageText.textContent = '!';
+            }
+        }
+
+        // ── Single PUT upload (small files) ──
+        async function uploadSingle(file, contentType, progressBar, percentageText, statusText) {
+            statusText.textContent = 'Requesting upload URL...';
+            progressBar.style.width = '5%';
+            percentageText.textContent = '5%';
+
+            const res = await fetch(`${r2Config.uploadApi.replace(/\/$/, '')}/get-upload-url`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ filename: file.name, contentType })
+            });
+
+            if (!res.ok) throw new Error(`Worker responded ${res.status}: ${await res.text()}`);
+            const data = await res.json();
+            const uploadUrl = data.uploadUrl || data.url;
+            if (!uploadUrl) throw new Error('Worker did not return an upload URL');
+
+            statusText.textContent = 'Uploading...';
+            progressBar.style.width = '10%';
+            percentageText.textContent = '10%';
+
+            await new Promise((resolve, reject) => {
+                const xhr = new XMLHttpRequest();
+                xhr.open('PUT', uploadUrl, true);
+                xhr.setRequestHeader('Content-Type', contentType);
+
+                xhr.upload.addEventListener('progress', (e) => {
+                    if (e.lengthComputable) {
+                        const pct = Math.round(10 + (e.loaded / e.total) * 85);
+                        progressBar.style.width = pct + '%';
+                        percentageText.textContent = pct + '%';
+                    }
+                });
+
+                xhr.addEventListener('load', () => {
+                    if (xhr.status >= 200 && xhr.status < 300) resolve();
+                    else reject(new Error(`R2 upload failed: ${xhr.status} ${xhr.responseText}`));
+                });
+                xhr.addEventListener('error', () => reject(new Error('Network error during upload')));
+                xhr.addEventListener('abort', () => reject(new Error('Upload aborted')));
+                xhr.send(file);
+            });
+        }
+
+        // ── Multipart upload (large files) ──
+        async function uploadMultipart(file, contentType, progressBar, percentageText, statusText) {
+            const apiBase = r2Config.uploadApi.replace(/\/$/, '');
+
+            statusText.textContent = 'Initializing upload...';
+            progressBar.style.width = '2%';
+            percentageText.textContent = '2%';
+
+            const createRes = await fetch(`${apiBase}/create-multipart-upload`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    filename: file.name,
+                    contentType,
+                    fileSize: file.size
+                })
+            });
+
+            if (!createRes.ok) {
+                const errBody = await createRes.text();
+                throw new Error(`Failed to initialize upload: ${createRes.status} ${errBody}`);
+            }
+
+            const { uploadId, partSize, partCount, presignedUrls } = await createRes.json();
+
+            if (!uploadId || !presignedUrls || presignedUrls.length === 0) {
+                throw new Error('Worker did not return valid multipart upload data');
+            }
+
+            const uploadedParts = [];
+            let totalUploaded = 0;
+
+            for (let i = 0; i < partCount; i++) {
+                const partNumber = i + 1;
+                const start = i * partSize;
+                const end = Math.min(start + partSize, file.size);
+                const chunk = file.slice(start, end);
+
+                statusText.textContent = `Uploading part ${partNumber}/${partCount}...`;
+
+                const etag = await uploadPart(presignedUrls[i], chunk, contentType, (partUploaded) => {
+                    const partProgress = (totalUploaded + partUploaded) / file.size;
+                    const pct = Math.round(5 + partProgress * 90);
+                    progressBar.style.width = pct + '%';
+                    percentageText.textContent = pct + '%';
+                });
+
+                uploadedParts.push({ partNumber, etag });
+                totalUploaded += (end - start);
+            }
+
+            statusText.textContent = 'Finalizing upload...';
+            progressBar.style.width = '97%';
+            percentageText.textContent = '97%';
+
+            const completeRes = await fetch(`${apiBase}/complete-multipart-upload`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    filename: file.name,
+                    uploadId,
+                    parts: uploadedParts
+                })
+            });
+
+            if (!completeRes.ok) {
+                try {
+                    await fetch(`${apiBase}/abort-multipart-upload`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ filename: file.name, uploadId })
+                    });
+                } catch (e) { /* best-effort cleanup */ }
+                const errBody = await completeRes.text();
+                throw new Error(`Failed to complete upload: ${completeRes.status} ${errBody}`);
+            }
+        }
+
+        function uploadPart(presignedUrl, chunk, contentType, onProgress) {
+            return new Promise((resolve, reject) => {
+                const xhr = new XMLHttpRequest();
+                xhr.open('PUT', presignedUrl, true);
+                xhr.setRequestHeader('Content-Type', contentType);
+
+                xhr.upload.addEventListener('progress', (e) => {
+                    if (e.lengthComputable && onProgress) {
+                        onProgress(e.loaded);
+                    }
+                });
+
+                xhr.addEventListener('load', () => {
+                    if (xhr.status >= 200 && xhr.status < 300) {
+                        const etag = xhr.getResponseHeader('ETag') || xhr.getResponseHeader('etag');
+                        if (etag) {
+                            resolve(etag.replace(/^["']|["']$/g, ''));
+                        } else {
+                            try {
+                                const body = JSON.parse(xhr.responseText);
+                                resolve(body.etag || body.ETag);
+                            } catch (e) {
+                                resolve('');
+                            }
+                        }
+                    } else {
+                        reject(new Error(`Part upload failed: ${xhr.status}`));
+                    }
+                });
+
+                xhr.addEventListener('error', () => reject(new Error('Network error')));
+                xhr.addEventListener('abort', () => reject(new Error('Aborted')));
+                xhr.send(chunk);
+            });
+        }
+
+        function saveItemToSharedCatalog(newItem) {
+            const saved = localStorage.getItem('r2_shared_media_vault');
+            let items = saved ? JSON.parse(saved) : [];
+            if (!items.some(i => i.name === newItem.name)) {
+                items.unshift(newItem);
+                localStorage.setItem('r2_shared_media_vault', JSON.stringify(items));
+            }
+        }
+    </script>
+</body>
+</html>
